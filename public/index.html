@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Drop · 局域网速传</title>
+  <link rel="stylesheet" href="/public/app.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+      <span>Drop</span>
+      <small class="muted">局域网速传</small>
+    </div>
+    <span id="net-note" class="pill"></span>
+  </header>
+
+  <main class="layout">
+    <aside class="side">
+      <section class="card">
+        <h2>手机扫码连接</h2>
+        <div id="qr" class="qr" aria-label="二维码"></div>
+        <p class="muted small" id="lan-url">获取局域网地址中…</p>
+        <p class="muted small">同一 Wi-Fi 下扫码即可打开；首次需输入 PIN 码（本机已自动填入二维码）。</p>
+      </section>
+      <section class="card">
+        <h2>接收目录</h2>
+        <p class="mono small" id="upload-dir">…</p>
+        <button id="open-finder" class="ghost">在访达中打开</button>
+      </section>
+      <section class="card">
+        <h2>PIN 码</h2>
+        <p class="mono pin" id="pin-display">······</p>
+        <p class="muted small">手机端输入此码即可上传；本机操作无需输入。</p>
+      </section>
+    </aside>
+
+    <section class="main">
+      <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="上传文件">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg>
+        <p><strong>拖文件到这里</strong>，或点击选择</p>
+        <p class="muted small">支持多选 · 直传到本机 <span id="dir-short">接收目录</span></p>
+        <input id="file-input" type="file" multiple hidden />
+      </div>
+
+      <div id="uploads" class="uploads" aria-live="polite"></div>
+
+      <div class="list-head">
+        <h2>收到的文件 <span id="file-count" class="muted"></span></h2>
+        <button id="refresh" class="ghost" title="刷新列表">刷新</button>
+      </div>
+      <ul id="file-list" class="files"></ul>
+      <p id="empty" class="muted small center hidden">还没有文件。从手机上传，或拖文件到这里。</p>
+    </section>
+  </main>
+
+  <div id="pin-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="pin-title">
+    <div class="modal-card">
+      <h2 id="pin-title">输入 PIN 码</h2>
+      <p class="muted small">在电脑上的 Drop 页面可以查看 6 位 PIN。</p>
+      <input id="pin-input" class="pin-input" inputmode="numeric" autocomplete="off" maxlength="6" placeholder="······" />
+      <p id="pin-error" class="error hidden" role="alert">PIN 不正确，请重试。</p>
+      <button id="pin-ok" class="primary">连接</button>
+    </div>
+  </div>
+
+  <script src="/public/app.js"></script>
+</body>
+</html>

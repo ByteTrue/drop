@@ -1,0 +1,7 @@
+{
+  "name": "drop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "局域网文件速传 · Toolbelt first-party tool"
+}
