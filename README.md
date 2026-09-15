@@ -25,3 +25,7 @@ Toolbelt 的第一个第一方工具（first-party tool），零 npm 依赖。
 
 - 不做文件夹上传、不做断点续传、不做远端加密（限定局域网使用）。
 - 「在访达中打开」仅在 macOS 生效（`open` 命令）。
+
+## 安装（Toolbelt）
+
+Toolbelt 的"发现"页已收录 Drop；也可以在"从 Git 安装"填 `https://github.com/ByteTrue/drop`。
