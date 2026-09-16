@@ -5,10 +5,13 @@
   "version": "0.1.0",
   "description": "手机与电脑之间的局域网文件速传：扫码即连，拖拽即传",
   "category": "文件传输",
-  "icon": "git",
-  "tone": "blue",
+  "icon": "media",
+  "tone": "orange",
   "kind": "app",
-  "capabilities": ["web", "server"],
+  "capabilities": [
+    "web",
+    "server"
+  ],
   "server": {
     "backend": {
       "type": "node",
