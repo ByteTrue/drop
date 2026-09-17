@@ -128,3 +128,17 @@ button.danger-link:hover { background: transparent; opacity: 0.8; }
   background: var(--bg); color: var(--ink); width: 100%;
 }
 .error { color: var(--danger); font-size: 12.5px; margin: 0; }
+
+.text-drop {
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 12px 14px; margin-bottom: 16px;
+}
+.text-drop summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+.text-drop[open] summary { margin-bottom: 10px; color: var(--ink); }
+.text-drop textarea {
+  width: 100%; font: inherit; font-size: 13px; line-height: 1.6; resize: vertical;
+  padding: 9px 11px; border: 1px solid var(--border); border-radius: 9px;
+  background: var(--bg); color: var(--ink);
+}
+.text-actions { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+.list-actions { display: inline-flex; gap: 4px; }

@@ -13,6 +13,7 @@ import http from "node:http";
 import { execFile } from "node:child_process";
 import fs from "node:fs";
 import { createReadStream } from "node:fs";
+import { pipeline } from "node:stream/promises";
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -186,6 +187,88 @@ async function readMultipartFile(req, boundary, onProgress) {
 // HTTP 服务
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// 零依赖 ZIP（store 模式，无压缩）：CRC32 + 流式打包
+// ---------------------------------------------------------------------------
+
+const CRC_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    table[n] = c >>> 0;
+  }
+  return table;
+})();
+
+async function crc32File(filePath) {
+  let crc = 0xffffffff;
+  for await (const chunk of createReadStream(filePath)) {
+    for (let i = 0; i < chunk.length; i++) crc = CRC_TABLE[(crc ^ chunk[i]) & 0xff] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function dosDateTime(date) {
+  return {
+    time: (date.getHours() << 11) | (date.getMinutes() << 5) | (date.getSeconds() >> 1),
+    date: ((date.getFullYear() - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate(),
+  };
+}
+
+function zipLocalHeader(name, crc, size, dt) {
+  const nameBuf = Buffer.from(name, "utf8");
+  const header = Buffer.alloc(30);
+  header.writeUInt32LE(0x04034b50, 0);
+  header.writeUInt16LE(20, 4);
+  header.writeUInt16LE(0x0800, 6); // UTF-8 文件名
+  header.writeUInt16LE(0, 8); // store
+  header.writeUInt16LE(dt.time, 10);
+  header.writeUInt16LE(dt.date, 12);
+  header.writeUInt32LE(crc, 14);
+  header.writeUInt32LE(size, 18);
+  header.writeUInt32LE(size, 22);
+  header.writeUInt16LE(nameBuf.length, 26);
+  header.writeUInt16LE(0, 28);
+  return Buffer.concat([header, nameBuf]);
+}
+
+function zipCentralEntry(name, crc, size, dt, offset) {
+  const nameBuf = Buffer.from(name, "utf8");
+  const buf = Buffer.alloc(46);
+  buf.writeUInt32LE(0x02014b50, 0);
+  buf.writeUInt16LE(20, 4);
+  buf.writeUInt16LE(20, 6);
+  buf.writeUInt16LE(0x0800, 8);
+  buf.writeUInt16LE(0, 10);
+  buf.writeUInt16LE(dt.time, 12);
+  buf.writeUInt16LE(dt.date, 14);
+  buf.writeUInt32LE(crc, 16);
+  buf.writeUInt32LE(size, 20);
+  buf.writeUInt32LE(size, 24);
+  buf.writeUInt16LE(nameBuf.length, 28);
+  buf.writeUInt16LE(0, 30);
+  buf.writeUInt16LE(0, 32);
+  buf.writeUInt16LE(0, 34);
+  buf.writeUInt16LE(0, 36);
+  buf.writeUInt32LE(0, 38);
+  buf.writeUInt32LE(offset, 42);
+  return Buffer.concat([buf, nameBuf]);
+}
+
+function zipEndRecord(count, cdSize, cdOffset) {
+  const buf = Buffer.alloc(22);
+  buf.writeUInt32LE(0x06054b50, 0);
+  buf.writeUInt16LE(0, 4);
+  buf.writeUInt16LE(0, 6);
+  buf.writeUInt16LE(count, 8);
+  buf.writeUInt16LE(count, 10);
+  buf.writeUInt32LE(cdSize, 12);
+  buf.writeUInt32LE(cdOffset, 16);
+  buf.writeUInt16LE(0, 20);
+  return buf;
+}
+
 const MIME = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -196,13 +279,25 @@ const MIME = {
 };
 
 function lanAddresses() {
+  // 只保留真实局域网地址：排除 VPN/隧道接口与基准测试保留段（198.18/198.19），
+  // 否则二维码可能指向手机根本连不上的地址（如代理 TUN 网卡）。
   const out = [];
-  for (const ifaces of Object.values(os.networkInterfaces())) {
+  for (const [name, ifaces] of Object.entries(os.networkInterfaces())) {
+    if (/^(utun|tun|tap|ppp|wg|zt|tailscale|docker|bridge|vmnet|vbox)/i.test(name)) continue;
     for (const iface of ifaces ?? []) {
-      if (iface.family === "IPv4" && !iface.internal) out.push(iface.address);
+      if (iface.family !== "IPv4" || iface.internal) continue;
+      if (/^198\.1[89]\./.test(iface.address)) continue;
+      out.push(iface.address);
     }
   }
-  return out;
+  // 私有网段优先：192.168 > 10 > 172.16-31 > 其它
+  const score = (ip) => {
+    if (ip.startsWith("192.168.")) return 0;
+    if (ip.startsWith("10.")) return 1;
+    if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return 2;
+    return 5;
+  };
+  return out.sort((a, b) => score(a) - score(b));
 }
 
 function json(res, code, data) {
@@ -287,6 +382,27 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { files });
     }
 
+    // 文本速传：手机发一段文字/链接到电脑，落成 txt 文件
+    if (req.method === "POST" && url.pathname === "/api/text") {
+      if (!(await authorized(req, res))) return;
+      let body = "";
+      for await (const chunk of req) {
+        body += chunk;
+        if (body.length > 1024 * 1024) return json(res, 413, { error: "文本过长（上限 1MB）" });
+      }
+      let text = "";
+      try {
+        text = String(JSON.parse(body).text ?? "");
+      } catch {
+        return json(res, 400, { error: "需要 JSON：{ text }" });
+      }
+      if (!text.trim()) return json(res, 400, { error: "文本为空" });
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+      const fileName = `text-${stamp}.txt`;
+      await fsp.writeFile(path.join(UPLOAD_DIR, fileName), text, "utf-8");
+      return json(res, 200, { ok: true, fileName });
+    }
+
     // 上传
     if (req.method === "POST" && url.pathname === "/api/upload") {
       if (!(await authorized(req, res))) return;
@@ -310,6 +426,39 @@ const server = http.createServer(async (req, res) => {
         "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(name)}`,
       });
       return createReadStream(filePath).pipe(res);
+    }
+
+    // 打包下载：把接收目录中所有文件打成 zip 流式返回
+    if (req.method === "GET" && url.pathname === "/api/zip") {
+      if (!(await authorized(req, res))) return;
+      const names = (await fsp.readdir(UPLOAD_DIR)).filter((n) => !n.startsWith("."));
+      const files = [];
+      for (const name of names) {
+        const stat = await fsp.stat(path.join(UPLOAD_DIR, name));
+        if (stat.isFile()) files.push({ name, size: stat.size, mtime: stat.mtimeMs });
+      }
+      if (files.length === 0) return json(res, 404, { error: "没有可打包的文件" });
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+      res.writeHead(200, {
+        "Content-Type": "application/zip",
+        "Content-Disposition": `attachment; filename="drop-${stamp}.zip"`,
+      });
+      const central = [];
+      let offset = 0;
+      for (const file of files) {
+        const full = path.join(UPLOAD_DIR, file.name);
+        const crc = await crc32File(full);
+        const dt = dosDateTime(new Date(file.mtime));
+        const local = zipLocalHeader(file.name, crc, file.size, dt);
+        res.write(local);
+        await pipeline(createReadStream(full), res, { end: false });
+        central.push(zipCentralEntry(file.name, crc, file.size, dt, offset));
+        offset += local.length + file.size;
+      }
+      const cd = Buffer.concat(central);
+      res.write(cd);
+      res.write(zipEndRecord(files.length, cd.length, offset));
+      return res.end();
     }
 
     // 删除

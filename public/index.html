@@ -44,11 +44,23 @@
         <input id="file-input" type="file" multiple hidden />
       </div>
 
+      <details class="text-drop">
+        <summary>发一段文字 / 链接到电脑</summary>
+        <textarea id="text-input" rows="3" placeholder="粘贴链接或文字，回车即发送" spellcheck="false"></textarea>
+        <div class="text-actions">
+          <button id="text-send" class="primary">发送文本</button>
+          <span id="text-status" class="muted small"></span>
+        </div>
+      </details>
+
       <div id="uploads" class="uploads" aria-live="polite"></div>
 
       <div class="list-head">
         <h2>收到的文件 <span id="file-count" class="muted"></span></h2>
-        <button id="refresh" class="ghost" title="刷新列表">刷新</button>
+        <span class="list-actions">
+          <button id="download-zip" class="ghost" title="把所有文件打成一个 zip">打包下载</button>
+          <button id="refresh" class="ghost" title="刷新列表">刷新</button>
+        </span>
       </div>
       <ul id="file-list" class="files"></ul>
       <p id="empty" class="muted small center hidden">还没有文件。从手机上传，或拖文件到这里。</p>

@@ -409,6 +409,32 @@ dropzone.addEventListener("drop", (e) => {
 });
 
 $("#refresh").addEventListener("click", loadFiles);
+
+// 文本速传：发送一段文字/链接，落成 txt 文件
+$("#text-send").addEventListener("click", async () => {
+  const input = $("#text-input");
+  const status = $("#text-status");
+  const text = input.value;
+  if (!text.trim()) return;
+  status.textContent = "发送中…";
+  try {
+    const res = await api("/api/text", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    input.value = "";
+    status.textContent = `已保存为 ${res.fileName}`;
+    loadFiles();
+  } catch (err) {
+    status.textContent = err.message === "需要 PIN" ? "需要 PIN 码" : `发送失败：${err.message}`;
+  }
+});
+
+// 打包下载：走带 PIN 的下载链接
+$("#download-zip").addEventListener("click", () => {
+  window.location.href = `/api/zip?pin=${encodeURIComponent(state.pin ?? "")}`;
+});
 $("#open-finder").addEventListener("click", () => {
   fetch("/api/reveal", { method: "POST" }).catch(() => {});
 });
