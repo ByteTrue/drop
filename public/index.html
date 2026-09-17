@@ -58,14 +58,31 @@
       <div class="list-head">
         <h2>收到的文件 <span id="file-count" class="muted"></span></h2>
         <span class="list-actions">
-          <button id="download-zip" class="ghost" title="把所有文件打成一个 zip">打包下载</button>
+          <label class="pick-all hidden" id="pick-all-wrap">
+            <input type="checkbox" id="pick-all" /> 全选
+          </label>
+          <button id="download-zip" class="ghost" title="把所有文件打成一个 zip">全部打包</button>
           <button id="refresh" class="ghost" title="刷新列表">刷新</button>
         </span>
+      </div>
+      <div id="selection-bar" class="selection-bar hidden">
+        <span>已选中 <strong id="selection-count">0</strong> 个文件</span>
+        <button id="zip-selected" class="primary">打包下载选中项</button>
       </div>
       <ul id="file-list" class="files"></ul>
       <p id="empty" class="muted small center hidden">还没有文件。从手机上传，或拖文件到这里。</p>
     </section>
   </main>
+
+  <div id="preview-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="preview-title">
+    <div class="modal-card preview-card">
+      <div class="preview-head">
+        <h2 id="preview-title">预览</h2>
+        <button id="preview-close" class="ghost" aria-label="关闭预览">关闭</button>
+      </div>
+      <div id="preview-body" class="preview-body"></div>
+    </div>
+  </div>
 
   <div id="pin-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="pin-title">
     <div class="modal-card">

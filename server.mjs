@@ -276,6 +276,15 @@ const MIME = {
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".pdf": "application/pdf",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".txt": "text/plain; charset=utf-8",
+  ".md": "text/plain; charset=utf-8",
+  ".json": "text/plain; charset=utf-8",
+  ".log": "text/plain; charset=utf-8",
+  ".csv": "text/plain; charset=utf-8",
 };
 
 function lanAddresses() {
@@ -414,24 +423,57 @@ const server = http.createServer(async (req, res) => {
     }
 
     // 下载（支持范围请求略过 v1；浏览器直接全量下载）
+    // 下载原文件；?inline=1 时浏览器内联展示（预览用）
     if (req.method === "GET" && url.pathname.startsWith("/api/download/")) {
       if (!(await authorized(req, res))) return;
       const name = path.basename(decodeURIComponent(url.pathname.slice("/api/download/".length)));
       const filePath = path.join(UPLOAD_DIR, name);
       if (!existsInUploadDir(name)) return json(res, 404, { error: "文件不存在" });
       const stat = await fsp.stat(filePath);
-      res.writeHead(200, {
-        "Content-Type": "application/octet-stream",
+      const inline = url.searchParams.get("inline") === "1";
+      const ext = path.extname(name).toLowerCase();
+      const head = {
+        "Content-Type": inline ? (MIME[ext] ?? "application/octet-stream") : "application/octet-stream",
         "Content-Length": stat.size,
-        "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(name)}`,
-      });
+      };
+      if (!inline) head["Content-Disposition"] = `attachment; filename*=UTF-8''${encodeURIComponent(name)}`;
+      res.writeHead(200, head);
       return createReadStream(filePath).pipe(res);
+    }
+
+    // 文本预览：返回前 64KB 文本内容（供前端粘贴到 preview 面板）
+    if (req.method === "GET" && url.pathname === "/api/preview/text") {
+      if (!(await authorized(req, res))) return;
+      const name = path.basename(decodeURIComponent(url.searchParams.get("name") ?? ""));
+      if (!name || !existsInUploadDir(name)) return json(res, 404, { error: "文件不存在" });
+      const stat = await fsp.stat(path.join(UPLOAD_DIR, name));
+      const limit = 64 * 1024;
+      const handle = await fsp.open(path.join(UPLOAD_DIR, name), "r");
+      try {
+        const buf = Buffer.alloc(Math.min(stat.size, limit));
+        await handle.read(buf, 0, buf.length, 0);
+        return json(res, 200, {
+          name,
+          truncated: stat.size > limit,
+          text: buf.toString("utf-8"),
+        });
+      } finally {
+        await handle.close();
+      }
     }
 
     // 打包下载：把接收目录中所有文件打成 zip 流式返回
     if (req.method === "GET" && url.pathname === "/api/zip") {
       if (!(await authorized(req, res))) return;
-      const names = (await fsp.readdir(UPLOAD_DIR)).filter((n) => !n.startsWith("."));
+      // ?names=a,b,c 只打包选中项；缺省打包全部
+      const selected = url.searchParams.get("names");
+      const all = (await fsp.readdir(UPLOAD_DIR)).filter((n) => !n.startsWith("."));
+      const names = selected
+        ? selected
+            .split(",")
+            .map((n) => path.basename(decodeURIComponent(n.trim())))
+            .filter((n) => all.includes(n))
+        : all;
       const files = [];
       for (const name of names) {
         const stat = await fsp.stat(path.join(UPLOAD_DIR, name));
